@@ -1,46 +1,59 @@
+# مخطط قاعدة البيانات (Database Schema)
 
-## 📄 **4. ملف: documentation/DATABASE_SCHEMA.md**
+يستخدم النظام قاعدة بيانات **MySQL**. يتم إدارة المخطط (Schema) باستخدام **Knex Migrations**.
 
-```markdown
-# مخطط قاعدة البيانات
+## 📊 الجداول (Tables)
 
-## 📊 جدول المستخدمين (users)
-```sql
-CREATE TABLE users (
-  user_id INT PRIMARY KEY AUTO_INCREMENT,
-  customer_id INT NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  first_name VARCHAR(100),
-  last_name VARCHAR(100),
-  role ENUM('admin', 'user') DEFAULT 'user',
-  is_verified BOOLEAN DEFAULT FALSE,
-  verification_code VARCHAR(10),
-  verification_code_expires DATETIME,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-);
-🏢 جدول العملاء (customers)
-sql
-CREATE TABLE customers (
-  customer_id INT PRIMARY KEY AUTO_INCREMENT,
-  company_name VARCHAR(255),
-  first_name VARCHAR(100),
-  last_name VARCHAR(100),
-  email VARCHAR(255) UNIQUE NOT NULL,
-  phone VARCHAR(50),
-  customer_type ENUM('company', 'individual') NOT NULL,
-  registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-📜 جدول التراخيص (licenses)
-sql
-CREATE TABLE licenses (
-  license_id INT PRIMARY KEY AUTO_INCREMENT,
-  customer_id INT NOT NULL,
-  license_type ENUM('monthly', 'yearly') NOT NULL,
-  seat_count INT NOT NULL,
-  status ENUM('active', 'inactive', 'expired') DEFAULT 'active',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-);
+### 1. `users`
+جدول المستخدمين الأساسي. يحتوي على بيانات الدخول وحالة الحساب.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | INT (PK) | المعرف الفريد للمستخدم |
+| `email` | VARCHAR | البريد الإلكتروني (Unique) |
+| `password` | VARCHAR | كلمة المرور المشفرة (Hashed) |
+| `first_name` | VARCHAR | الاسم الأول |
+| `last_name` | VARCHAR | اسم العائلة |
+| `role` | ENUM | الصلاحية (`user`, `admin`) - الافتراضي `user` |
+| `is_verified` | BOOLEAN | هل تم التحقق من البريد؟ |
+| `verification_code`| VARCHAR | كود التحقق الحالي |
+| `created_at` | TIMESTAMP | تاريخ الإنشاء |
+| `updated_at` | TIMESTAMP | تاريخ آخر تعديل |
+
+### 2. `customers`
+جدول تفاصيل العملاء (قد يكون مرتبطاً بالمستخدم أو منفصلاً حسب التصميم، هنا نفترض أنه امتداد لبيانات المستخدم أو كيان مستقل للشركات).
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | INT (PK) | المعرف الفريد |
+| `user_id` | INT (FK) | معرف المستخدم المرتبط (إن وجد) |
+| `type` | ENUM | نوع العميل (`individual`, `company`) |
+| `company_name` | VARCHAR | اسم الشركة (للشركات فقط) |
+| `phone` | VARCHAR | رقم الهاتف |
+| `address` | TEXT | العنوان الكامل |
+
+### 3. `licenses`
+جدول التراخيص الممنوحة للعملاء.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | INT (PK) | المعرف الفريد للترخيص |
+| `customer_id` | INT (FK) | معرف العميل صاحب الترخيص |
+| `type` | ENUM | نوع الاشتراك (`monthly`, `yearly`) |
+| `status` | ENUM | حالة الترخيص (`active`, `expired`, `cancelled`) |
+| `start_date` | DATETIME | تاريخ بداية الترخيص |
+| `end_date` | DATETIME | تاريخ انتهاء الترخيص |
+| `seat_count` | INT | عدد المستخدمين المسموح بهم |
+
+---
+
+## 🔗 العلاقات (Relationships)
+
+- **Users ↔ Customers:** علاقة (1:1) أو (1:N) حسب منطق العمل. عادةً المستخدم الواحد يمثل عميلاً واحداً.
+- **Customers ↔ Licenses:** علاقة (1:N). العميل الواحد يمكن أن يمتلك عدة تراخيص.
+
+---
+
+## 📝 ملاحظات
+- يتم استخدام `created_at` و `updated_at` في جميع الجداول لتتبع التغييرات.
+- المفاتيح الأجنبية (Foreign Keys) تضمن تكامل البيانات (Referential Integrity).
