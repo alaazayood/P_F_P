@@ -1,216 +1,245 @@
-// frontend/src/pages/Dashboard.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Box, 
-  Paper, 
+  CssBaseline, 
+  Drawer, 
+  AppBar, 
+  Toolbar, 
+  List, 
   Typography, 
-  CircularProgress,
-  Alert,
-  Button
+  ListItem, 
+  ListItemButton, 
+  ListItemIcon, 
+  ListItemText,
+  Container,
+  Paper,
+  Button,
+  Stack,
+  Chip,
+  Avatar
 } from '@mui/material';
-import { 
+import {
   Dashboard as DashboardIcon,
-  VpnKey as LicenseIcon,
   People as PeopleIcon,
-  TrendingUp as TrendingIcon,
-  Refresh as RefreshIcon
+  VpnKey as LicenseIcon,
+  Settings as SettingsIcon,
+  Logout as LogoutIcon,
+  Add as AddIcon,
+  CloudDownload as DownloadIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { RootState } from '../store'; 
-import { licenseService } from '../services/licenseService';
+import { RootState } from '../store';
+import api from '../services/api';
+import LicensesPage from './LicensesPage';
+import TeamPage from './TeamPage';
+
+const drawerWidth = 240;
 
 interface DashboardStats {
-  totalLicenses: number;
   activeLicenses: number;
-  totalCustomers: number;
-  recentActivity: number;
+  totalSeats: number;
+  seatsUsed: number;
+  expiryDate: string; // ISO date
+  planName: string;
+  customerName: string;
+  customerId: number;
 }
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useSelector((state: RootState) => state.auth);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalLicenses: 0,
-    activeLicenses: 0,
-    totalCustomers: 0,
-    recentActivity: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // 🔧 إصلاح: جلب البيانات الحقيقية من الـ API
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // جلب التراخيص الحقيقية
-      const licenses = await licenseService.getAllLicenses();
-      
-      // حساب الإحصائيات الحقيقية
-      const totalLicenses = licenses.length;
-      const activeLicenses = licenses.filter(license => 
-        new Date(license.expiration_date) > new Date()
-      ).length;
-      
-      // حساب العملاء الفريدين
-      const uniqueCustomers = new Set(licenses.map(license => license.customer_id)).size;
-      
-      // النشاط الحديث (آخر 7 أيام)
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      const recentActivity = licenses.filter(license => 
-        new Date(license.issue_date) > weekAgo
-      ).length;
-
-      setStats({
-        totalLicenses,
-        activeLicenses,
-        totalCustomers: uniqueCustomers,
-        recentActivity
-      });
-
-    } catch (err: any) {
-      console.error('Dashboard data error:', err);
-      setError('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [view, setView] = useState<'overview' | 'licenses' | 'team' | 'settings'>('overview');
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const response = await api.get('/auth/profile');
+        setStats({
+          activeLicenses: 1,
+          totalSeats: 5,
+          seatsUsed: 2,
+          expiryDate: '2025-12-31T00:00:00Z',
+          planName: 'Pro Plan',
+          customerName: response.data.user.company_name || 'My Organization',
+          customerId: response.data.user.customer_id
+        });
+      } catch (error) {
+        console.error('Failed to fetch dashboard data', error);
+      }
+    };
+
     fetchDashboardData();
-  }, [fetchDashboardData]);
+  }, []);
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    );
-  }
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
 
-  const StatCard = ({ title, value, icon, color }: { title: string; value: number; icon: React.ReactNode; color: string }) => (
-    <Paper 
-      elevation={2}
-      sx={{ 
-        p: 3, 
-        borderRadius: 3,
-        background: `linear-gradient(135deg, ${color}20 0%, ${color}10 100%)`,
-        border: `1px solid ${color}20`,
-        height: '100%'
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" sx={{ color }}>
-            {value}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {title}
-          </Typography>
-        </Box>
-        <Box sx={{ color, opacity: 0.8 }}>
-          {icon}
-        </Box>
-      </Box>
-    </Paper>
-  );
+  const renderContent = () => {
+    switch (view) {
+      case 'licenses':
+        return <LicensesPage />;
+      case 'team':
+        return <TeamPage />;
+      case 'settings':
+        return <Typography variant="h4">Settings (Coming Soon)</Typography>;
+      default:
+        return (
+          <Stack spacing={3}>
+            {/* Welcome Banner */}
+            <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', bgcolor: '#e3f2fd' }}>
+              <Typography variant="h5" gutterBottom color="primary.main" fontWeight="bold">
+                Welcome back, {stats?.customerName}!
+              </Typography>
+              <Typography variant="body1">
+                Here is what's happening with your licenses today.
+              </Typography>
+            </Paper>
+
+            {/* Stats Cards */}
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, 
+              gap: 3 
+            }}>
+              <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                <Typography color="textSecondary" gutterBottom>Active Licenses</Typography>
+                <Typography variant="h3" color="primary">{stats?.activeLicenses}</Typography>
+              </Paper>
+              
+              <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                <Typography color="textSecondary" gutterBottom>Seats Used</Typography>
+                <Typography variant="h3">
+                  {stats?.seatsUsed} <Typography component="span" color="textSecondary">/ {stats?.totalSeats}</Typography>
+                </Typography>
+              </Paper>
+              
+              <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                <Typography color="textSecondary" gutterBottom>Plan Status</Typography>
+                <Stack direction="row" justifyContent="center" alignItems="center" spacing={1} mt={1}>
+                  <Chip label={stats?.planName} color="success" />
+                  <Typography variant="body2" color="textSecondary">
+                    Expires {stats?.expiryDate ? new Date(stats.expiryDate).toLocaleDateString() : 'N/A'}
+                  </Typography>
+                </Stack>
+              </Paper>
+            </Box>
+
+            {/* User Dashboard: Download & Licenses */}
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, 
+              gap: 3,
+              mt: 3
+            }}>
+              {/* Download App Card */}
+              <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.light', mb: 2 }}>
+                  <DownloadIcon sx={{ fontSize: 30, color: 'primary.main' }} />
+                </Avatar>
+                <Typography variant="h6" gutterBottom>Download Desktop App</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Get the PowerFlow agent to start automating your tasks.
+                </Typography>
+                <Button variant="contained" color="primary" size="large">
+                  Download for Windows
+                </Button>
+              </Paper>
+
+              {/* My Licenses Card */}
+              <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'success.light', mb: 2 }}>
+                  <LicenseIcon sx={{ fontSize: 30, color: 'success.main' }} />
+                </Avatar>
+                <Typography variant="h6" gutterBottom>My Licenses</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Use one of these keys to activate your app.
+                </Typography>
+                <Button variant="outlined" onClick={() => setView('licenses')}>
+                  View Available Keys
+                </Button>
+              </Paper>
+            </Box>
+
+            {/* Quick Actions - Only for Admins */}
+            {['admin', 'owner', 'super_admin'].includes(user?.role || '') && (
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Quick Actions</Typography>
+                <Stack direction="row" spacing={2}>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setView('licenses')}>
+                    Buy New License
+                  </Button>
+                  <Button variant="outlined" startIcon={<PeopleIcon />} onClick={() => setView('team')}>
+                    Invite User
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+          </Stack>
+        );
+    }
+  };
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            Welcome back, {user?.first_name} 👋
+    <Box sx={{ display: 'flex' }}>
+      <CssBaseline />
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+        <Toolbar>
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+            PowerFlow Portal
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Here's what's happening with your licenses today.
-          </Typography>
-        </Box>
-        <Button
-          startIcon={<RefreshIcon />}
-          onClick={fetchDashboardData}
-          variant="outlined"
-          disabled={loading}
-        >
-          Refresh
-        </Button>
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Grid Layout */}
-      <Box sx={{
-        display: 'grid',
-        gridTemplateColumns: {
-          xs: '1fr',
-          sm: 'repeat(2, 1fr)',
-          md: user?.role === 'admin' ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)'
-        },
-        gap: 3,
-        mb: 4
-      }}>
-        <Box>
-          <StatCard 
-            title="Total Licenses" 
-            value={stats.totalLicenses} 
-            icon={<LicenseIcon sx={{ fontSize: 40 }} />}
-            color="#667eea"
-          />
-        </Box>
-        
-        <Box>
-          <StatCard 
-            title="Active Licenses" 
-            value={stats.activeLicenses} 
-            icon={<TrendingIcon sx={{ fontSize: 40 }} />}
-            color="#48bb78"
-          />
-        </Box>
-
-        {user?.role === 'admin' && (
-          <Box>
-            <StatCard 
-              title="Total Customers" 
-              value={stats.totalCustomers} 
-              icon={<PeopleIcon sx={{ fontSize: 40 }} />}
-              color="#ed8936"
-            />
-          </Box>
-        )}
-
-        <Box>
-          <StatCard 
-            title="Recent Activity" 
-            value={stats.recentActivity} 
-            icon={<DashboardIcon sx={{ fontSize: 40 }} />}
-            color="#9f7aea"
-          />
-        </Box>
-      </Box>
-
-      <Paper 
-        elevation={2}
-        sx={{ 
-          p: 3, 
-          borderRadius: 3,
-          background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)'
+          <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />}>
+            Logout
+          </Button>
+        </Toolbar>
+      </AppBar>
+      <Drawer
+        variant="permanent"
+        sx={{
+          width: drawerWidth,
+          flexShrink: 0,
+          [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
         }}
       >
-        <Typography variant="h6" fontWeight="bold" gutterBottom>
-          Quick Actions
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          • Manage your license portfolio<br/>
-          • View customer information<br/>
-          • Generate usage reports<br/>
-          • Update account settings
-        </Typography>
-      </Paper>
+        <Toolbar />
+        <Box sx={{ overflow: 'auto' }}>
+          <List>
+            <ListItem disablePadding>
+              <ListItemButton selected={view === 'overview'} onClick={() => setView('overview')}>
+                <ListItemIcon><DashboardIcon /></ListItemIcon>
+                <ListItemText primary="Overview" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton selected={view === 'licenses'} onClick={() => setView('licenses')}>
+                <ListItemIcon><LicenseIcon /></ListItemIcon>
+                <ListItemText primary="Licenses" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton selected={view === 'team'} onClick={() => setView('team')}>
+                <ListItemIcon><PeopleIcon /></ListItemIcon>
+                <ListItemText primary="Team" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton selected={view === 'settings'} onClick={() => setView('settings')}>
+                <ListItemIcon><SettingsIcon /></ListItemIcon>
+                <ListItemText primary="Settings" />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </Box>
+      </Drawer>
+      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+        <Toolbar />
+        <Container maxWidth="lg">
+          {renderContent()}
+        </Container>
+      </Box>
     </Box>
   );
 };

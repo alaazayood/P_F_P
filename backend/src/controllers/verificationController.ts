@@ -1,12 +1,12 @@
-// backend/src/controllers/verificationController.ts
+// backend/src/controllers/verificationController.ts - Prisma Version
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { ApiError } from '../utils/error';
-import db from '../utils/db';
-import { 
-  generateVerificationCode, 
+import prisma from '../utils/prisma'; // Import Prisma Client
+import {
+  generateVerificationCode,
   sendVerificationCode,
-  validateVerificationCode 
+  validateVerificationCode
 } from '../utils/verification';
 
 const verifyCodeSchema = z.object({
@@ -23,50 +23,54 @@ export const verifyCode = async (req: Request, res: Response) => {
     const { email, code } = verifyCodeSchema.parse(req.body);
     const normalizedEmail = email.toLowerCase();
 
-    // البحث عن المستخدم
-    const user = await db('users')
-      .where({ email: normalizedEmail })
-      .first();
+    // 1. Find User
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
 
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
 
-    // التحقق إذا كان المستخدم مفعل أصلاً
-    if (user.is_verified) {
+    // 2. Check if already verified
+    if (user.isVerified) {
       throw new ApiError(400, 'Account is already verified');
     }
 
-    // التحقق من وجود كود تحقق
-    if (!user.verification_code || !user.verification_code_expires) {
+    // 3. Check if code exists
+    if (!user.verificationCode || !user.verificationExpires) {
       throw new ApiError(400, 'No verification code found. Please request a new one.');
     }
 
-    // التحقق من صحة الكود
+    // 4. Validate Code
     const isValid = validateVerificationCode(
       code,
-      user.verification_code,
-      new Date(user.verification_code_expires)
+      user.verificationCode,
+      new Date(user.verificationExpires)
     );
 
     if (!isValid) {
-      // زيادة عدد محاولات التحقق الفاشلة
-      await db('users')
-        .where({ email: normalizedEmail })
-        .increment('verification_attempts', 1);
+      // Increment attempts
+      await prisma.user.update({
+        where: { email: normalizedEmail },
+        data: {
+          verificationAttempts: { increment: 1 }
+        }
+      });
 
       throw new ApiError(400, 'Invalid or expired verification code');
     }
 
-    // تفعيل الحساب
-    await db('users')
-      .where({ email: normalizedEmail })
-      .update({
-        is_verified: true,
-        verification_code: null,
-        verification_code_expires: null,
-        verification_attempts: 0
-      });
+    // 5. Success: Verify User
+    await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: {
+        isVerified: true,
+        verificationCode: null,
+        verificationExpires: null,
+        verificationAttempts: 0
+      }
+    });
 
     res.json({
       success: true,
@@ -90,42 +94,43 @@ export const resendVerificationCode = async (req: Request, res: Response) => {
     const { email } = resendCodeSchema.parse(req.body);
     const normalizedEmail = email.toLowerCase();
 
-    // البحث عن المستخدم
-    const user = await db('users')
-      .where({ email: normalizedEmail })
-      .first();
+    // 1. Find User
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
 
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
 
-    // التحقق إذا كان المستخدم مفعل أصلاً
-    if (user.is_verified) {
+    // 2. Check if already verified
+    if (user.isVerified) {
       throw new ApiError(400, 'Account is already verified');
     }
 
-    // التحقق من الوقت بين إعادة الإرسال (منع spam)
-    const lastSent = user.last_verification_sent;
+    // 3. Rate Limit (1 minute)
+    const lastSent = user.lastVerificationSent;
     const now = new Date();
     if (lastSent && (now.getTime() - new Date(lastSent).getTime()) < 60000) {
       throw new ApiError(429, 'Please wait 1 minute before requesting a new code');
     }
 
-    // توليد كود جديد
+    // 4. Generate New Code
     const verificationCode = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 دقيقة
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
 
-    // تحديث المستخدم بالكود الجديد
-    await db('users')
-      .where({ email: normalizedEmail })
-      .update({
-        verification_code: verificationCode,
-        verification_code_expires: expiresAt,
-        last_verification_sent: new Date(),
-        verification_attempts: 0
-      });
+    // 5. Update User
+    await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: {
+        verificationCode: verificationCode,
+        verificationExpires: expiresAt,
+        lastVerificationSent: new Date(),
+        verificationAttempts: 0
+      }
+    });
 
-    // إرسال الكود
+    // 6. Send Email
     await sendVerificationCode(normalizedEmail, verificationCode);
 
     res.json({

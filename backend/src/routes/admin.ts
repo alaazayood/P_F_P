@@ -1,18 +1,18 @@
 // backend/src/routes/admin.ts
 import { Router } from 'express';
-import { requireAuth } from '../middlewares/auth'; // ✅ التصحيح هنا
-import { 
-  createLicense, 
-  getAllLicenses 
+import { requireAuth } from '../middlewares/auth';
+import {
+  purchaseLicense,
+  getAllLicenses
 } from '../controllers/licenseController';
 
 const adminRouter = Router();
 
-// 🔹 مسارات إدارة التراخيص
-adminRouter.post('/licenses', requireAuth(['admin']), createLicense);
-adminRouter.get('/licenses', requireAuth(['admin']), getAllLicenses);
+// 🔹 License Management (Purchase & View)
+adminRouter.post('/licenses/purchase', requireAuth(['admin', 'user']), purchaseLicense); // Allow users to purchase too
+adminRouter.get('/licenses', requireAuth(['admin', 'user']), getAllLicenses);
 
-// 🔹 مسار التحقق من الصلاحيات
+// 🔹 Admin Check
 adminRouter.get('/ping', requireAuth(['admin']), (req, res) => {
   res.json({ ok: true, scope: 'admin' });
 });

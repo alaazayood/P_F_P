@@ -1,43 +1,77 @@
+// backend/src/controllers/userController.ts
 import { Request, Response } from 'express';
 import { ApiError } from '../utils/error';
-import knex from '../utils/db';
+import prisma from '../utils/prisma';
 import { z } from 'zod';
 import { hashPassword } from '../utils/password';
 
+// Schema for creating a user (Admin creating a user manually - optional, mostly via invite now)
 const createUserSchema = z.object({
-  company_id: z.number(),
   email: z.string().email(),
   password: z.string().min(6),
-  first_name: z.string().min(1),
-  last_name: z.string().min(1),
-  phone: z.string().optional(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
   role: z.enum(['admin', 'user']).default('user')
 });
 
 export const createUser = async (req: Request, res: Response) => {
   try {
     const userData = createUserSchema.parse(req.body);
+    const customerId = (req as any).user?.customer_id;
+
+    if (!customerId) {
+      throw new ApiError(401, 'User context missing');
+    }
+
     const passwordHash = await hashPassword(userData.password);
-    
-    const [userId] = await knex('users').insert({
-      ...userData,
-      password_hash: passwordHash
+
+    const user = await prisma.user.create({
+      data: {
+        email: userData.email,
+        passwordHash,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role.toUpperCase() as any, // Map to Prisma Enum
+        customerId,
+        isVerified: true, // Manually created users are verified? Or send invite?
+        isActive: true
+      }
     });
-    
+
     res.status(201).json({
-      message: 'تم إنشاء المستخدم بنجاح',
-      user_id: userId
+      message: 'User created successfully',
+      userId: user.id
     });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new ApiError(400, 'Invalid input data');
+    }
     throw new ApiError(500, 'Failed to create user');
   }
 };
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const users = await knex('users')
-      .join('companies', 'users.company_id', 'companies.company_id')
-      .select('users.*', 'companies.name as company_name');
+    const customerId = (req as any).user?.customer_id;
+
+    if (!customerId) {
+      throw new ApiError(401, 'User context missing');
+    }
+
+    const users = await prisma.user.findMany({
+      where: { customerId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        isActive: true,
+        lastVerificationSent: true,
+        isVerified: true
+      }
+    });
+
     res.json({ users });
   } catch (error) {
     throw new ApiError(500, 'Failed to fetch users');
@@ -47,13 +81,21 @@ export const getAllUsers = async (req: Request, res: Response) => {
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const deleted = await knex('users').where({ user_id: userId }).delete();
-    
-    if (!deleted) {
-      throw new ApiError(404, 'User not found');
+    const customerId = (req as any).user?.customer_id;
+
+    // Ensure we only delete users from OUR customer/organization
+    const deleted = await prisma.user.deleteMany({
+      where: {
+        id: parseInt(userId),
+        customerId: customerId
+      }
+    });
+
+    if (deleted.count === 0) {
+      throw new ApiError(404, 'User not found or not authorized to delete');
     }
-    
-    res.json({ message: 'تم حذف المستخدم بنجاح' });
+
+    res.json({ message: 'User deleted successfully' });
   } catch (error) {
     throw new ApiError(500, 'Failed to delete user');
   }

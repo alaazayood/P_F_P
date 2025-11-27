@@ -7,27 +7,28 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { store } from './store';
 import { theme } from './theme';
 
-// الصفحات والمكونات الموجودة لديك
+// Pages & Components
 import Dashboard from './pages/Dashboard';
 import LicensesPage from './pages/LicensesPage';
 import RegisterPage from './pages/RegisterPage';
 import LoginForm from './components/LoginForm';
 import DashboardLayout from './components/layout/DashboardLayout';
 import VerifyPage from './components/auth/VerifyPage';
+import AcceptInvitePage from './pages/AcceptInvitePage'; // Import the new page
 
-// مكون للصفحات المحمية
+// Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
   return token ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
-// مكون للصفحات العامة
+// Public Route Component
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
   return !token ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
-// صفحة تسجيل الدخول
+// Login Page Wrapper
 const LoginPage: React.FC = () => {
   return (
     <div style={{ 
@@ -49,7 +50,7 @@ const App: React.FC = () => {
         <CssBaseline />
         <Router>
           <Routes>
-            {/* مسارات عامة (بدون Layout) */}
+            {/* Public Routes */}
             <Route path="/login" element={
               <PublicRoute>
                 <LoginPage />
@@ -62,14 +63,19 @@ const App: React.FC = () => {
               </PublicRoute>
             } />
             
-            {/* 🔥 صفحة التحقق - يجب أن تكون عامة (خارج ProtectedRoute) */}
             <Route path="/verify" element={
               <PublicRoute>
                 <VerifyPage />
               </PublicRoute>
             } />
 
-            {/* مسارات محمية (باستخدام DashboardLayout) */}
+            <Route path="/accept-invite" element={
+              <PublicRoute>
+                <AcceptInvitePage />
+              </PublicRoute>
+            } />
+
+            {/* Protected Routes */}
             <Route path="/" element={
               <ProtectedRoute>
                 <DashboardLayout />
@@ -80,11 +86,11 @@ const App: React.FC = () => {
               <Route path="licenses" element={<LicensesPage />} />
             </Route>
 
-            {/* redirects للتوافق مع الروابط القديمة */}
+            {/* Redirects */}
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/licenses" element={<Navigate to="/licenses" replace />} />
             
-            {/* 🔥 Redirect أي مسار غير معروف إلى التسجيل */}
+            {/* Catch-all Redirect */}
             <Route path="*" element={<Navigate to="/register" replace />} />
           </Routes>
         </Router>

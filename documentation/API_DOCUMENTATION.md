@@ -90,20 +90,62 @@
 ## 🛡️ الإدارة (Admin)
 > تتطلب هذه المسارات توكن لمستخدم بصلاحية `admin`.
 
-### 1. إنشاء ترخيص (Create License)
-**Endpoint:** `POST /admin/licenses`
+### 1. شراء ترخيص جديد (Purchase License)
+**Endpoint:** `POST /admin/licenses/purchase`
 **Headers:** `Authorization: Bearer <TOKEN>`
 
 **Body Parameters:**
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `customerId` | number | معرف العميل |
-| `type` | string | نوع الترخيص (`monthly`, `yearly`) |
-| `seats` | number | عدد المقاعد |
+| `planType` | string | نوع الخطة (`yearly`, `3years`, `floating`) |
+| `seats` | number | عدد المقاعد المطلوبة |
+| `phoneNumber` | string | رقم الهاتف للتحقق من الدفع (للاختبار: `0966262458`) |
 
-### 2. عرض التراخيص
+**Success Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "Successfully purchased 5 seats for yearly plan.",
+  "data": [ ... ] // قائمة التراخيص المنشأة
+}
+```
+
+### 2. عرض التراخيص (Get All Licenses)
 **Endpoint:** `GET /admin/licenses`
 **Headers:** `Authorization: Bearer <TOKEN>`
+
+---
+
+## 🖥️ تطبيق سطح المكتب (Desktop App)
+
+### 1. التحقق من الترخيص (Validate License)
+**Endpoint:** `POST /license/validate`
+**Note:** هذا المسار عام (Public) ولا يتطلب توكن مستخدم.
+
+**Body Parameters:**
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `licenseKey` | string | مفتاح الترخيص |
+| `pcUuid` | string | المعرف الفريد للجهاز (Hardware ID) |
+| `username` | string | اسم مستخدم الجهاز (اختياري) |
+
+**Success Response (200 OK):**
+```json
+{
+  "valid": true,
+  "plan": "yearly",
+  "expiry": "2025-11-26T...",
+  "seats": 1
+}
+```
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "valid": false,
+  "message": "License is bound to another machine"
+}
+```
 
 ---
 
@@ -112,6 +154,7 @@
 - **201 Created:** تم إنشاء المورد بنجاح.
 - **400 Bad Request:** خطأ في البيانات المرسلة (Validation Error).
 - **401 Unauthorized:** لم يتم تقديم توكن صالح أو فشل تسجيل الدخول.
+- **402 Payment Required:** فشل عملية الدفع (رقم هاتف خاطئ).
 - **403 Forbidden:** ليس لديك صلاحية للوصول لهذا المورد.
 - **404 Not Found:** المورد غير موجود.
 - **500 Internal Server Error:** خطأ في الخادم.

@@ -12,14 +12,34 @@ import {
   Box,
   Typography,
   CircularProgress,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  Stack
 } from '@mui/material';
-import { licenseService } from '../services/licenseService';
+import { licenseService, License } from '../services/licenseService';
+
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 const LicensesPage: React.FC = () => {
-  const [licenses, setLicenses] = useState<any[]>([]);
+  const { user } = useSelector((state: RootState) => state.auth);
+  const [licenses, setLicenses] = useState<License[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Purchase Dialog State
+  const [openPurchase, setOpenPurchase] = useState(false);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseData, setPurchaseData] = useState({
+    planType: 'yearly' as 'yearly' | '3years' | 'floating',
+    seats: 1,
+    phoneNumber: ''
+  });
 
   useEffect(() => {
     fetchLicenses();
@@ -39,36 +59,26 @@ const LicensesPage: React.FC = () => {
     }
   };
 
-  const createLicense = async () => {
+  const handlePurchase = async () => {
     try {
+      setPurchaseLoading(true);
       setError('');
-      
-      // 🔧 الحصول على customer_id من المستخدم المسجل
-      const userData = localStorage.getItem('user');
-      if (!userData) {
-        setError('Please login first');
-        return;
-      }
-      
-      const user = JSON.parse(userData);
-      const customer_id = user.customer_id;
 
-      if (!customer_id) {
-        setError('Customer information not found');
-        return;
-      }
-
-      await licenseService.createLicense({
-        customer_id: customer_id, // استخدام الـ ID الحقيقي
-        license_type: 'yearly',
-        seat_count: 1
+      await licenseService.purchaseLicense({
+        planType: purchaseData.planType,
+        seats: Number(purchaseData.seats),
+        phoneNumber: purchaseData.phoneNumber
       });
-      
-      fetchLicenses();
+
+      setOpenPurchase(false);
+      fetchLicenses(); // Refresh list
+      // Reset form
+      setPurchaseData({ planType: 'yearly', seats: 1, phoneNumber: '' });
       
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create license');
-      console.error('Error creating license:', err);
+      setError(err.response?.data?.message || 'Failed to purchase license');
+    } finally {
+      setPurchaseLoading(false);
     }
   };
 
@@ -82,9 +92,24 @@ const LicensesPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        License Management
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" fontWeight="bold" sx={{ color: '#1a237e' }}>
+          License Management
+        </Typography>
+        {['admin', 'owner', 'super_admin'].includes(user?.role || '') && (
+          <Button 
+            variant="contained" 
+            onClick={() => setOpenPurchase(true)}
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}
+          >
+            Purchase New License
+          </Button>
+        )}
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -92,35 +117,107 @@ const LicensesPage: React.FC = () => {
         </Alert>
       )}
 
-      <Button variant="contained" onClick={createLicense} sx={{ mb: 3 }}>
-        Create New License
-      </Button>
-
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>License ID</TableCell>
-              <TableCell>License Hash</TableCell>
-              <TableCell>Customer</TableCell>
+              <TableCell>License Key</TableCell>
               <TableCell>Type</TableCell>
+              <TableCell>Seats</TableCell>
+              <TableCell>Issue Date</TableCell>
               <TableCell>Expiration</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {licenses.map((license) => (
-              <TableRow key={license.license_id}>
-                <TableCell>{license.license_id}</TableCell>
-                <TableCell>{license.license_hash}</TableCell>
-<TableCell>{license.customer_first_name} {license.customer_last_name}</TableCell>                <TableCell>{license.license_type}</TableCell>
-                <TableCell>{license.expiration_date}</TableCell>
-                <TableCell>{license.is_free ? 'Free' : 'In Use'}</TableCell>
+              <TableRow key={license.id}>
+                <TableCell sx={{ fontFamily: 'monospace' }}>{license.key}</TableCell>
+                <TableCell>{license.type}</TableCell>
+                <TableCell>{license.seatNumber}</TableCell>
+                <TableCell>{new Date(license.issueDate).toLocaleDateString()}</TableCell>
+                <TableCell>{new Date(license.expiryDate).toLocaleDateString()}</TableCell>
+                <TableCell>
+                  <Box
+                    component="span"
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      bgcolor: license.isActive ? 'success.light' : 'error.light',
+                      color: license.isActive ? 'success.dark' : 'error.dark',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    {license.isActive ? 'Active' : 'Inactive'}
+                  </Box>
+                </TableCell>
               </TableRow>
             ))}
+            {licenses.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} align="center">
+                  No licenses found. Purchase one to get started!
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Purchase Dialog */}
+      <Dialog open={openPurchase} onClose={() => setOpenPurchase(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Purchase License</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Stack spacing={2}>
+              <Box>
+                <TextField
+                  select
+                  fullWidth
+                  label="Plan Type"
+                  value={purchaseData.planType}
+                  onChange={(e) => setPurchaseData({ ...purchaseData, planType: e.target.value as any })}
+                >
+                  <MenuItem value="yearly">Yearly License</MenuItem>
+                  <MenuItem value="3years">3 Years License</MenuItem>
+                  <MenuItem value="floating">Floating License</MenuItem>
+                </TextField>
+              </Box>
+              <Box>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Number of Seats"
+                  value={purchaseData.seats}
+                  onChange={(e) => setPurchaseData({ ...purchaseData, seats: Number(e.target.value) })}
+                  inputProps={{ min: 1 }}
+                />
+              </Box>
+              <Box>
+                <TextField
+                  fullWidth
+                  label="Phone Number (Payment Verification)"
+                  placeholder="Enter 0966262458 for test"
+                  value={purchaseData.phoneNumber}
+                  onChange={(e) => setPurchaseData({ ...purchaseData, phoneNumber: e.target.value })}
+                  helperText="For testing, use: 0966262458"
+                />
+              </Box>
+            </Stack>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenPurchase(false)}>Cancel</Button>
+          <Button 
+            onClick={handlePurchase} 
+            variant="contained" 
+            disabled={purchaseLoading || !purchaseData.phoneNumber}
+          >
+            {purchaseLoading ? 'Processing...' : 'Purchase'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -1,42 +1,46 @@
 // backend/src/middlewares/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
-import db from '../utils/db';
+import prisma from '../utils/prisma'; // Use Prisma
 
 export const requireAuth = (roles: string[] = []) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const token = req.header('Authorization')?.replace('Bearer ', '');
-      
+
       if (!token) {
         return res.status(401).json({ success: false, message: 'No token provided' });
       }
 
       const decoded = verifyToken(token);
-      
-      // 🔧 التصحيح: استخدام users
-      const user = await db('users')
-        .where({ user_id: decoded.sub })
-        .first();
+
+      // Use Prisma to find user
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.sub }, // decoded.sub is user_id
+      });
 
       if (!user) {
         return res.status(401).json({ success: false, message: 'User not found' });
       }
 
-      if (!user.is_active) {
+      if (!user.isActive) {
         return res.status(401).json({ success: false, message: 'User is inactive' });
       }
 
-      // إضافة معلومات المستخدم إلى request
+      // Normalize role to lowercase for consistency
+      // Prisma returns Enum (e.g. 'ADMIN'), app expects 'admin'
+      const userRole = user.role.toLowerCase();
+
+      // Add user info to request (maintain legacy shape)
       req.user = {
-        user_id: user.user_id,
+        user_id: user.id,
         email: user.email,
-        role: user.role,
-        customer_id: user.customer_id
+        role: userRole,
+        customer_id: user.customerId
       };
 
-      // التحقق من الصلاحيات إذا كانت مطلوبة
-      if (roles.length > 0 && !roles.includes(user.role)) {
+      // Check permissions
+      if (roles.length > 0 && !roles.includes(userRole)) {
         return res.status(403).json({ success: false, message: 'Insufficient permissions' });
       }
 
